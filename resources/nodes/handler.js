@@ -5,19 +5,60 @@ let documentClient = new AWS.DynamoDB.DocumentClient();
 let table = 'Nodes'
 
 
+async function readTable(tableName,parameters = {}){
+
+  let filterExpression = "";
+  let expressionAttributeValues = {};
+  
+  let parameterList = Object.keys(parameters);
+  let numOfParameter = parameterList.length;
+
+  let count = 0;
+  for(let attribute in parameters){
+    count += 1;
+    filterExpression += attribute + "=:" + attribute;
+    expressionAttributeValues[":"+attribute] = parameters[attribute];
+
+    //has next?
+    if(count != numOfParameter){
+      filterExpression += " and";
+    }
+  }
+
+  let params = {
+    TableName : tableName,
+    FilterExpression : filterExpression,
+    ExpressionAttributeValues : expressionAttributeValues
+  };
+  
+  let result = await documentClient.scan(params).promise();
+  return result;
+
+  /*
+  result :
+  {
+    Items : [],
+    Count : number,
+    ScannedCount : number
+  }
+   */
+
+}
+
 // return Array
 module.exports.read = async event => {
   let pathParameters = event.pathParameters;
   let projectId = pathParameters.projectId;
+
+  let tableName = "NodesTest";
+  let parameters = 
+  {
+    "projectId" : projectId
+  }
+  let response = await readTable(tableName,parameters);
   
-  let params = {
-    TableName : 'NodesTest',
-    FilterExpression : 'projectId = :projectId',
-    ExpressionAttributeValues : {':projectId' : projectId}
-  };
-  
-  let result = await documentClient.scan(params).promise();
   /*
+  response :
   {
     Items : [],
     Count : number,
@@ -25,14 +66,61 @@ module.exports.read = async event => {
   }
    */
   
+   let result = response.Items;
+
   return {
     statusCode: 200,
-    body:JSON.stringify(result.Items)
-      
+    body:JSON.stringify(result)
     };
+
+    /*
+    return :
+    []
+     */
+  };
+
+
+module.exports.readNode= async event => {
+  let queryStringParameters = event.queryStringParameters;
+  let requestUrl = queryStringParameters.requestUrl;
+
+  let tableName = "NodesTest";
+  let parameters = {
+    "requestUrl" : requestUrl
+  }
+  let response = await readTable(tableName,parameters);
+  
+  /*
+  response :
+  {
+    Items : [],
+    Count : number,
+    ScannedCount : number
+  }
+   */
+
+   let result;
+
+   if(response.Count == 0){
+     result = {}
+   }
+   else{
+     result = response.Items[0];
+   }
+
+  return {
+    statusCode: 200,
+    body:JSON.stringify(result)
+    };
+
+    /*
+    return :
+    {}
+     */
   };
   
-  
+
+
   
   function convertToBatchWriteFormat(data,projectId, userId){
     let items = [];
@@ -51,7 +139,12 @@ module.exports.read = async event => {
       }
       
       let node = data[i];
-      node["id"] = uniqid();
+
+      //new node
+      if( !node["id"] ){
+        node["id"] = uniqid();
+      }
+      
       node["projectId"] = projectId;
       node["userId"] = userId;
       
